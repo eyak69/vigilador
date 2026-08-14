@@ -1238,7 +1238,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             try:
                 cfg = get_config()
-                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://192.168.1.7:5000")
+                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://localhost:5000")
                 req = urllib.request.Request(f"{fapi}/api/events/{urllib.parse.quote(row['evento_id'])}")
                 with urllib.request.urlopen(req, timeout=10) as r:
                     ev = json.loads(r.read())
@@ -1287,7 +1287,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 cfg = get_config()
-                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://192.168.1.7:5000")
+                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://localhost:5000")
                 req = urllib.request.Request(f"{fapi}/api/events/{urllib.parse.quote(row['evento_id'])}/snapshot.jpg")
                 with urllib.request.urlopen(req, timeout=10) as r:
                     body = r.read()
@@ -1312,7 +1312,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 cfg = get_config()
-                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://192.168.1.7:5000")
+                fapi = (cfg.get("conexion") or {}).get("frigate_api", "http://localhost:5000")
                 req = urllib.request.Request(f"{fapi}/api/events/{urllib.parse.quote(row['evento_id'])}/thumbnail.jpg")
                 with urllib.request.urlopen(req, timeout=10) as r:
                     body = r.read()

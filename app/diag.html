@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Vigilador · Diagnóstico</title>
+<style>body{background:#0d1117;color:#e6edf3;font-family:monospace;padding:20px}pre{white-space:pre-wrap;background:#010409;padding:12px;border-radius:8px}</style>
+</head>
+<body>
+<h3>🔬 Diagnóstico del frontend (carga la app REAL)</h3>
+<pre id="out">capturando errores de la app real…</pre>
+<iframe id="real" src="/app/?diag" style="width:100%;height:70vh;border:1px solid #30363d;border-radius:8px"></iframe>
+<script>
+const out = document.getElementById('out');
+const ifr = document.getElementById('real');
+function show(arr) { out.textContent = arr.join("\n"); }
+ifr.onload = () => {
+  const errs = [];
+  setTimeout(() => {
+    try {
+      const w = ifr.contentWindow;
+      w.onerror = (m, s, l, c) => { errs.push("🔴 ERROR: " + m + " @ línea " + l + " col " + c); show(errs); };
+      w.addEventListener('unhandledrejection', (e) => {
+        errs.push("🔴 PROMESA: " + (e.reason && (e.reason.message || e.reason) || e.reason)); show(errs);
+      });
+    } catch (e) { errs.push("no puedo ver el iframe: " + e.message); show(errs); return; }
+    setTimeout(() => {
+      const w = ifr.contentWindow;
+      const c = w.document.getElementById('contadores');
+      const ts = w.document.getElementById('estado-ts');
+      const cards = w.document.querySelectorAll('.card').length;
+      if (errs.length) show(errs);
+      else show(["✅ SIN ERRORES",
+        "tarjetas del dashboard: " + cards,
+        "estado-ts: " + (ts ? ts.textContent : "—"),
+        "contadores HTML: " + (c ? c.innerHTML.length + " chars" : "elemento ausente")]);
+    }, 4000);
+  }, 300);
+};
+</script>
+</body>
+</html>

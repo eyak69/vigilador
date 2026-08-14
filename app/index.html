@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vigilador · App</title>
+<link rel="stylesheet" href="/app/style.css?v=39">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁️</text></svg>">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="logo">👁️</span>
+    <div>
+      <h1>Vigilador</h1>
+      <span id="estado-ts" class="sub">conectando…</span>
+    </div>
+  </div>
+  <nav>
+    <button class="tab active" data-tab="dashboard" title="Panel general: contadores, salud, cámaras en vivo y últimos avistamientos.">Dashboard</button>
+    <button class="tab" data-tab="avistamientos" title="Búsqueda y listado de avistamientos con filtros.">Avistamientos</button>
+    <button class="tab" data-tab="memoria" title="Búsqueda semántica en la memoria del núcleo (Qdrant + Ollama local).">Memoria</button>
+    <button class="tab" data-tab="placas" title="Registro de patentes conocidas.">Placas</button>
+    <button class="tab" data-tab="personas" title="Registro de identidades (familia, visitas, servicios).">Personas</button>
+    <button class="tab" data-tab="config" title="Configuración del sistema: momentos, visión, Telegram, memoria y solapado.">Configuración</button>
+    <button class="tab" data-tab="logs" title="Logs en vivo y bundle de diagnóstico.">Logs</button>
+    <a class="swagger" href="/openapi.json" target="_blank" title="Especificación OpenAPI">OpenAPI ↗</a>
+  </nav>
+</header>
+
+<main>
+  <!-- ============ DASHBOARD ============ -->
+  <section id="tab-dashboard" class="tabpage active">
+    <div id="contadores" class="cards"></div>
+    <div class="panel">
+      <h2>Salud y detectores <button id="btn-test-alerta" class="btn-test" title="Envía una alerta de prueba por la regla &quot;test&quot; para verificar el ruteo de Telegram.">🧪 Probar alerta</button></h2>
+      <div id="salud" class="tablewrap"></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h2>Cámaras y zonas <span class="badge badge-frigate">Frigate</span></h2>
+        <div id="camaras"></div>
+      </div>
+      <div class="panel">
+        <h2>Ocupación de zonas</h2>
+        <div id="ocupacion"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Actividad por día <span id="resumen-dias" class="badge">7 días</span></h2>
+      <div id="resumen" class="tablewrap"></div>
+    </div>
+    <div class="panel">
+      <h2>Últimos avistamientos</h2>
+      <div id="ultimos" class="tablewrap"></div>
+    </div>
+  </section>
+
+  <!-- ============ AVISTAMIENTOS ============ -->
+  <section id="tab-avistamientos" class="tabpage">
+    <div class="panel">
+      <h2>Búsqueda de avistamientos</h2>
+      <form id="form-av" class="filters">
+        <input id="f-patente" placeholder="Patente (ej. ABC123)" autocomplete="off" title="Filtra por patente (parcial o completa, ej. AB o ABC123).">
+        <select id="f-camara" title="Filtra por cámara: parque, entrada, calle o patio.">
+          <option value="">Todas las cámaras</option>
+          <option>parque</option><option>entrada</option><option>calle</option><option>patio</option>
+        </select>
+        <input id="f-limite" type="number" value="30" min="1" max="500" title="Límite">
+        <button type="submit" title="Aplica los filtros de búsqueda.">Buscar</button>
+      </form>
+      <div id="av-result" class="tablewrap"></div>
+    </div>
+  </section>
+
+  <!-- ============ PLACAS ============ -->
+  <section id="tab-placas" class="tabpage">
+    <div class="grid2">
+      <div class="panel">
+        <h2>Registrar placa</h2>
+        <form id="form-placa" class="filters col">
+          <input id="p-patente" placeholder="Patente (ej. ABC123)" required autocomplete="off" title="Patente del vehículo (ej. ABC123).">
+          <input id="p-nombre" placeholder="Nombre / descripción (ej. Auto de Cristian)" title="Nombre o descripción (ej. &quot;Auto de Cristian&quot;).">
+          <select id="p-tipo" title="Clasificación: vecino, visita, servicio o desconocido.">
+            <option value="vecino">Vecino</option>
+            <option value="visita">Visita</option>
+            <option value="servicio">Servicio</option>
+            <option value="desconocido">Desconocido</option>
+          </select>
+          <input id="p-notas" placeholder="Notas (opcional)" title="Notas opcionales sobre la placa.">
+          <div class="row2">
+            <button type="submit" title="Registra la placa en la base.">Registrar</button>
+            <button type="button" id="btn-placa-cancel" class="hidden" title="Cancela la edición en curso.">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Placas registradas</h2>
+        <div id="placas-list" class="tablewrap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CONFIG ============ -->
+  <section id="tab-config" class="tabpage">
+    <div class="panel">
+      <h2>Configuración del núcleo <span class="badge">recarga en caliente ≤60 s</span></h2>
+      <div class="subtabs" id="cfg-tabs">
+        <button type="button" class="st active" data-st="st-politica" title="Momentos, cooldowns y anti-fantasma: cómo decide el guardián.">🕐 Política</button>
+        <button type="button" class="st" data-st="st-ia" title="Visión por zona, proveedores, prioridades y memoria — todo lo de IA.">🤖 IA</button>
+        <button type="button" class="st" data-st="st-telegram" title="Bots, reglas de notificación y solapado: cómo avisa.">📢 Telegram</button>
+        <button type="button" class="st" data-st="st-conexion" title="MQTT, Frigate y chat (solo lectura).">🔌 Conexión</button>
+      </div>
+
+      <div class="subpage" id="st-politica">
+        <form id="form-config" class="filters col">
+          <h3>Momentos (ventanas de tiempo con zonas)</h3>
+          <p class="sub">Cada momento define qué zonas vigila el sistema en esa franja. Las zonas se comparten entre momentos libremente.</p>
+          <div id="momentos-list" class="tablewrap"></div>
+          <form id="form-momento" class="filters">
+            <input id="m-nombre" placeholder="nombre (ej. tarde)" autocomplete="off" title="Nombre del momento (ej. &quot;tarde&quot;).">
+            <input id="m-desde" type="time" value="07:00" title="Hora de inicio de la ventana de tiempo.">
+            <input id="m-hasta" type="time" value="23:00" title="Hora de fin de la ventana de tiempo.">
+            <label class="chk"><input id="m-nocturno" type="checkbox" title="Momento nocturno: las personas pasan a prioridad CRÍTICA."> nocturno</label>
+            <button type="submit" title="Agrega el momento a la política (recarga en caliente).">Agregar momento</button>
+          </form>
+          <div class="row2">
+            <label>Cooldown offline (s) <input id="c-offline" type="number" min="30" title="Cooldown offline (s): cuánto debe estar caído un detector antes de avisar."></label>
+            <label>Heartbeat log (s) <input id="c-heartbeat" type="number" min="30" title="Heartbeat (s): cada cuánto se registra la salud en el log."></label>
+            <label>Dedup de autos (s) <input id="c-car-cooldown" type="number" min="0" title="Cooldown de autos (s): el mismo auto re-rastreado en la misma cámara dentro de esta ventana se considera repetido (sin avistamiento). 0 = apagado."></label>
+            <label>Mov. falso auto (px) <input id="c-mov-car" type="number" min="0" title="Anti-fantasma del auto: desplazamiento mínimo del centroide (px) para considerar movimiento REAL. Por debajo = reflejo/fantasma → sin alerta. 0 = apagado."></label>
+            <label>Mov. falso persona (px) <input id="c-mov-person" type="number" min="0" title="Anti-fantasma de personas: 0 = apagado (una persona parada en la puerta es real). Súbalo (ej. 60) solo si ve tracks fantasma."></label>
+            <label>Mov. falso perro (px) <input id="c-mov-dog" type="number" min="0" title="Anti-fantasma de perros/gatos (sombra como animal): 0 = apagado."></label>
+          </div>
+          <button type="submit" title="Guarda momentos y globales; se aplica en ≤60 s.">Guardar política</button>
+          <div id="config-msg" class="msg"></div>
+        </form>
+      </div>
+
+      <div class="subpage hidden" id="st-ia">
+        <div class="grupo-ia">
+          <h3>Proveedores de visión</h3>
+          <p class="sub">Las API keys se guardan en el <code>.env</code> del perfil (nunca en el JSON de config).</p>
+          <div id="prov-list" class="tablewrap"></div>
+          <form id="form-prov" class="filters col">
+            <div class="row2">
+              <input id="pv-nombre" placeholder="Nombre (ej. gemini)" required autocomplete="off" title="Nombre interno del proveedor (ej. gemini).">
+              <select id="pv-tipo" title="OpenAI-compatible (OpenRouter/NVIDIA) u Ollama local.">
+                <option value="openai">OpenAI-compatible (OpenRouter, NVIDIA...)</option>
+                <option value="ollama">Ollama local</option>
+              </select>
+            </div>
+            <div class="row2">
+              <input id="pv-base" placeholder="Base URL (vacío = default)" title="URL base de la API — obligatoria: toda IP/URL externa vive en la config.">
+            </div>
+            <input id="pv-key" type="password" placeholder="API key (solo si el proveedor la requiere)" autocomplete="off" title="API key: se guarda en el .env como VISION_&lt;NOMBRE&gt;_API_KEY, nunca en el JSON.">
+            <div class="row2">
+              <button type="submit" title="Guarda el proveedor de visión.">Guardar proveedor</button>
+              <button type="button" id="btn-prov-cancel" class="hidden" title="Cancela la edición en curso.">Cancelar</button>
+            </div>
+          </form>
+        </div>
+        <div class="grupo-ia">
+          <h3>Visión por zona</h3>
+          <p class="sub">Qué sistema de visión usa cada zona (habilitado + reescalar). Se aplica con recarga en caliente; el modelo lo define el ⭐ activo.</p>
+          <div id="vision-zonas" class="tablewrap"></div>
+          <form id="form-vision-zona" class="filters">
+            <select id="vz-nombre" title="Zona de Frigate a asociar (las ya configuradas se filtran)."><option value="">(cargando zonas de Frigate…)</option></select>
+            <button type="submit" title="Asocia visión a la zona (usa el modelo activo de la app).">Agregar zona</button>
+          </form>
+        </div>
+        <div class="grupo-ia">
+          <h3>Modelos de visión</h3>
+          <p class="sub">Cargue varios modelos (proveedor + modelo) — el <b>⭐ activo</b> es el que usa toda la app. En el alta de proveedor solo se carga la conexión; el modelo se carga acá.</p>
+          <div id="modelos-list" class="tablewrap"></div>
+          <form id="form-modelo" class="filters">
+            <select id="md-proveedor" title="Proveedor de visión (los del CRUD de proveedores)."></select>
+            <input id="md-modelo" placeholder="modelo (ej. gemini-flash-lite-latest)" required autocomplete="off" title="Modelo de visión (ej. gemini-flash-lite-latest).">
+            <button type="submit" title="Agrega el modelo (proveedor + modelo) a la lista.">Agregar modelo</button>
+          </form>
+        </div>
+        <div class="grupo-ia">
+          <h3>Prioridad por tipo de visión (contexto)</h3>
+          <p class="sub">El veredicto de la visión ajusta la prioridad de la alerta: el sodero/vecino baja, el desconocido sube. La noche y el veredicto "sospechoso" siempre mandan (crítica) y el merodeo no baja de alta.</p>
+          <div id="vision-prioridad-list" class="tablewrap"></div>
+          <form id="form-vtp" class="filters">
+            <input id="vtp-tipo" placeholder="tipo de visión (ej. repartidor)" required autocomplete="off" title="Tipo de veredicto de visión (ej. sodero, vecino, desconocido). El nombre se conserva tal cual.">
+            <select id="vtp-prioridad" title="Prioridad de alerta para ese tipo de visión.">
+              <option value="baja">baja</option>
+              <option value="media" selected>media</option>
+              <option value="alta">alta</option>
+              <option value="critica">critica</option>
+            </select>
+            <button type="submit" title="Agrega el tipo de visión con su prioridad.">Agregar tipo</button>
+          </form>
+        </div>
+        <div class="grupo-ia">
+          <h3>Memoria (embedding local)</h3>
+          <p class="sub">El stack de memoria — editable por componente con 💾, sin borrado: es infraestructura.</p>
+          <div id="memoria-conf" class="tablewrap"></div>
+        </div>
+      </div>
+
+      <div class="subpage hidden" id="st-telegram">
+        <h3>Telegram (bots y notificaciones)</h3>
+        <p class="sub">Cada bot con su token (en .env) y chat_id. Cada tipo de notificación decide a qué bot o bots va — o a ninguno.</p>
+        <div id="bots-list" class="tablewrap"></div>
+        <form id="form-bot" class="filters col">
+          <div class="row2">
+            <input id="bt-nombre" placeholder="nombre (ej. guardia)" required autocomplete="off" title="Nombre del bot de Telegram (ej. guardia).">
+            <input id="bt-chat" placeholder="chat_id (ej. 1720381097)" title="chat_id de Telegram donde llegan las notificaciones.">
+          </div>
+          <input id="bt-token" type="password" placeholder="token del bot (solo al crear o rotar)" autocomplete="off" title="Token del bot: se guarda en el .env, nunca en el JSON. Solo al crear o rotar.">
+          <label class="chk"><input id="bt-habilitado" type="checkbox" checked title="Bot activo para recibir notificaciones."> habilitado</label>
+          <div class="row2">
+            <button type="submit" title="Agrega el bot de Telegram.">Agregar bot</button>
+            <button type="button" id="btn-bot-cancel" class="hidden" title="Cancela la edición en curso.">Cancelar</button>
+          </div>
+        </form>
+        <h4>Reglas de notificación</h4>
+        <p class="sub">Cuando el Vigilador decide avisar, consulta estas reglas: si la regla está <b>activa</b> y tiene <b>bot(es) marcados</b>, la notificación va a esos bots de Telegram. Si está desactivada o sin bots, queda solo en logs y memoria.</p>
+        <div id="reglas-list" class="tablewrap"></div>
+        <h4>Solapado de cámaras</h4>
+        <p class="sub">Con cámaras pegadas, un paseo cruza varias en segundos. Activo = las alertas del mismo paseo (misma persona, dentro de la ventana) se encadenan como respuestas del primer mensaje: <b>un hilo por paseo</b>, no un mensaje por cámara.</p>
+        <div class="filters" id="solapado-box">
+          <label class="chk"><input id="sol-hab" type="checkbox" title="Activa la consolidación: el mismo paseo por cámaras pegadas se encadena en un solo hilo."> activar consolidación</label>
+          <input id="sol-ventana" type="number" min="0" step="10" style="width:110px" title="ventana en segundos">
+          <span class="sub">segundos de ventana (0 = solo misma cámara)</span>
+          <button type="button" onclick="guardarSolapado()" title="Guarda el parámetro de solapado de cámaras.">Guardar</button>
+          <span id="sol-msg" class="msg"></span>
+        </div>
+      </div>
+
+      <div class="subpage hidden" id="st-conexion">
+        <h3>Conexión (requiere reinicio)</h3>
+        <div class="row2">
+          <label>MQTT host <input id="c-mqtt-host" disabled title="Host del broker MQTT (solo lectura — se edita en vigilador_config.json)."></label>
+          <label>MQTT puerto <input id="c-mqtt-port" disabled title="Puerto del broker MQTT (solo lectura)."></label>
+        </div>
+        <div class="row2">
+          <label>Frigate API <input id="c-frigate" disabled title="URL de la API de Frigate (solo lectura)."></label>
+          <label>Telegram chat <input id="c-tg" disabled title="Chat de Telegram por defecto (solo lectura)."></label>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section id="tab-memoria" class="tabpage">
+    <div class="panel">
+      <h2>Buscador de memoria <span class="badge">semántico · Qdrant</span></h2>
+      <form id="form-mem" class="filters">
+        <input id="m-q" placeholder='¿A qué hora pasó el sodero?' autocomplete="off" title="Pregunta en lenguaje natural sobre la memoria (ej. &quot;¿a qué hora pasó el sodero?&quot;).">
+        <input id="m-limite" type="number" value="10" min="1" max="30" title="Límite">
+        <button type="submit" title="Busca en la memoria semántica (Qdrant).">Buscar</button>
+      </form>
+      <div id="mem-result"></div>
+    </div>
+  </section>
+
+  <!-- ============ PERSONAS ============ -->
+  <section id="tab-personas" class="tabpage">
+    <div class="grid2">
+      <div class="panel">
+        <h2>Registrar persona <span class="badge">identidad por nombre</span></h2>
+        <form id="form-persona" class="filters col">
+          <input id="per-nombre" placeholder="Nombre (ej. Cristian)" required autocomplete="off" title="Nombre de la persona (se conserva tal cual se escribe).">
+          <select id="per-tipo" title="Clasificación: familia, visita o servicio.">
+            <option value="familia">Familia</option>
+            <option value="visita">Visita</option>
+            <option value="servicio">Servicio</option>
+          </select>
+          <input id="per-notas" placeholder="Notas (opcional)" title="Notas opcionales sobre la persona.">
+          <div class="row2">
+            <button type="submit" title="Registra la persona en el registro de identidades.">Registrar</button>
+            <button type="button" id="btn-persona-cancel" class="hidden" title="Cancela la edición en curso.">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Personas conocidas</h2>
+        <div id="personas-list" class="tablewrap"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Cómo usar la identidad</h2>
+      <p class="sub">En la pestaña <b>Avistamientos</b>, cada avistamiento de persona tiene un
+      selector para etiquetarlo con un nombre ("este fui yo"). El Vigilador lo aprende en memoria
+      y las personas sembradas vienen de los registros históricos con reconocimiento facial.</p>
+    </div>
+  </section>
+
+  <!-- ============ LOGS ============ -->
+  <section id="tab-logs" class="tabpage">
+    <div class="panel">
+      <h2>Logs y diagnóstico <a class="swagger" href="/api/logs/bundle" title="Descargar bundle">⬇ Exportar bundle</a></h2>
+      <form id="form-logs" class="filters">
+        <select id="l-tipo" title="Log a visualizar: events (decisiones), vigilador (diagnóstico) o mqtt_raw (bus).">
+          <option value="events">events.log (decisiones)</option>
+          <option value="vigilador">vigilador.log (diagnóstico)</option>
+          <option value="mqtt_raw">mqtt_raw (bus MQTT)</option>
+        </select>
+        <input id="l-lineas" type="number" value="120" min="10" max="500" title="Líneas">
+        <label class="chk"><input id="l-errores" type="checkbox" title="Solo líneas con errores."> solo errores</label>
+        <button type="submit" title="Actualiza la vista del log.">Actualizar</button>
+        <span id="logs-info" class="sub"></span>
+      </form>
+      <pre id="logs-out" class="logview"></pre>
+    </div>
+  </section>
+
+<!-- modal de foto -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <button id="modal-close" class="close" title="Cerrar la foto en grande.">✕</button>
+    <div class="modal-fotos">
+      <figure>
+        <img id="modal-img" alt="avistamiento">
+        <figcaption class="sub">foto del avistamiento</figcaption>
+      </figure>
+      <figure id="modal-annot-wrap" class="hidden">
+        <img id="modal-img-annot" alt="detección anotada">
+        <figcaption class="sub">detección de Frigate — recuadro del motor</figcaption>
+      </figure>
+    </div>
+    <div id="modal-cap"></div>
+    <div id="modal-verdict" class="modal-verdict"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/app/app.js?v=45"></script>
+</body>
+</html>

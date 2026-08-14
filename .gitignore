@@ -1,0 +1,18 @@
+# secretos y datos locales — NUNCA al repo
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+estado.json
+vigilador_config.json
+logs/
+snapshots/
+backups/
+mqtt_raw*.log
+events.log*
+attachments/
+__pycache__/
+*.pyc
+*.tmp
+mqtt_study.jsonl\nmqtt_study.py\nlisten_tracked.py\nbackfill_personas.py\n

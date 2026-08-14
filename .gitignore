@@ -15,4 +15,9 @@ attachments/
 __pycache__/
 *.pyc
 *.tmp
-mqtt_study.jsonl\nmqtt_study.py\nlisten_tracked.py\nbackfill_personas.py\n
+
+# scripts de estudio/diagnóstico (no forman parte del producto)
+mqtt_study.jsonl
+mqtt_study.py
+listen_tracked.py
+backfill_personas.py

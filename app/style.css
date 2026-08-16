@@ -173,7 +173,7 @@ button.del:hover { background: rgba(255,92,92,.1); }
   background: var(--bg2); color: var(--muted); cursor: pointer; font-size: 13px; transition: all .15s; }
 .subtabs .st:hover { border-color: var(--accent); color: var(--text); }
 .subtabs .st.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.subpage { animation: fadein .18s ease; }
+.subpage { }
 @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .modal-verdict { max-width: 640px; margin: 10px auto 0; padding: 10px 14px; border-radius: 10px;
   background: rgba(139, 124, 248, 0.08); border: 1px solid rgba(139, 124, 248, 0.25);
@@ -241,4 +241,6 @@ table.inner th { font-size: 11px; }
   main { padding: 14px; }
   header { padding: 10px 14px; }
   .filters .row2 { grid-template-columns: 1fr; }
-}
+}.btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg2); color: var(--text); }
+.btn-sm:hover { border-color: var(--accent); color: var(--accent); }

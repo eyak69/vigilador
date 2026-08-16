@@ -105,6 +105,8 @@ _OPENAPI_DEFS = [
     ("get", "/api/avistamientos/recorrido", "avistamientos", "Cadena temporal de un vehículo por patente", ["patente"], None),
     ("get", "/api/avistamientos/{id}/foto", "avistamientos", "Foto JPEG del avistamiento", [], None),
     ("put", "/api/avistamientos/{id}/persona", "avistamientos", "Etiqueta el avistamiento con una persona (aprende en memoria)", [], "Etiqueta"),
+    ("put", "/api/avistamientos/{id}/revision", "avistamientos", "Marca la revisión del laboratorio (correcto/falso_positivo/falso_negativo)", [], "Etiqueta"),
+    ("get", "/api/laboratorio", "sistema", "Métricas de calibración: revisiones por zona y precisión", [], None),
     ("get", "/api/placas", "placas", "Lista de placas", [], None),
     ("post", "/api/placas", "placas", "Registra una placa", [], "Placa"),
     ("put", "/api/placas/{patente}", "placas", "Actualiza una placa", [], "Placa"),
@@ -199,7 +201,7 @@ def con():
     return c
 
 def avistamientos(patente=None, camara=None, desde=None, hasta=None, limite=50):
-    q = "SELECT id, evento_id, camara, label, patente, patente_score, inicio, fin, duracion, zonas, veredicto, foto, persona, estado FROM avistamientos WHERE 1=1"
+    q = "SELECT id, evento_id, camara, label, patente, patente_score, inicio, fin, duracion, zonas, veredicto, foto, persona, estado, revision FROM avistamientos WHERE 1=1"
     params = []
     if patente:
         q += " AND patente = ?"
@@ -718,9 +720,14 @@ def guardar_proveedor(nombre, tipo, base_url, api_key=None):
         os.environ[env_var] = api_key
     return True, "guardado (key en .env, recarga ≤60s)"
 
+import tempfile
+
 def guardar_config(cfg):
-    with open(CONFIG_FILE, "w") as f:
+    dir_name = os.path.dirname(CONFIG_FILE)
+    with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+        tmp_name = f.name
+    os.replace(tmp_name, CONFIG_FILE)
 
 def proveedor_delete(nombre):
     cfg = get_config()
@@ -732,6 +739,87 @@ def proveedor_delete(nombre):
     return True, "proveedor eliminado (la key queda en el .env)"
 
 # --- CRUD de visión por zona (config vision.zonas) ---
+
+
+# --- CRUD de Perfiles de Zona ---
+
+def perfiles_zona_list():
+    cfg = get_config()
+    perfiles = (cfg.get("vision") or {}).get("perfiles") or {}
+    return {"perfiles": perfiles}
+
+def perfil_zona_add(pid, nombre, prompt="", modelo=""):
+    cfg = get_config()
+    vis = cfg.setdefault("vision", {})
+    perfiles = vis.setdefault("perfiles", {})
+    pid = (pid or "").strip().lower()
+    if not pid or not nombre:
+        return False, "ID y nombre son obligatorios"
+    if pid in perfiles:
+        return False, "El perfil ya existe (usa PUT)"
+    perfiles[pid] = {
+        "id": pid,
+        "nombre": nombre.strip(),
+        "prompt": (prompt or "").strip(),
+        "modelo": (modelo or "").strip()
+    }
+    guardar_config(cfg)
+    return True, "Perfil de zona creado (recarga en <=60s)"
+
+def perfil_zona_update(pid, nombre=None, prompt=None, modelo=None):
+    cfg = get_config()
+    perfiles = (cfg.get("vision") or {}).get("perfiles") or {}
+    pid = (pid or "").strip().lower()
+    if pid not in perfiles:
+        return False, "Perfil no existe"
+    p = perfiles[pid]
+    if nombre is not None: p["nombre"] = nombre.strip()
+    if prompt is not None: p["prompt"] = prompt.strip()
+    if modelo is not None: p["modelo"] = modelo.strip()
+    guardar_config(cfg)
+    return True, "Perfil de zona actualizado (recarga en <=60s)"
+
+def perfil_zona_delete(pid):
+    cfg = get_config()
+    vis = cfg.get("vision") or {}
+    perfiles = vis.get("perfiles") or {}
+    pid = (pid or "").strip().lower()
+    if pid not in perfiles:
+        return False, "Perfil no existe"
+    del perfiles[pid]
+    zonas = vis.get("zonas") or {}
+    for z_name, z_cfg in zonas.items():
+        if z_cfg.get("perfil_id") == pid:
+            z_cfg["perfil_id"] = ""
+    guardar_config(cfg)
+    return True, "Perfil eliminado (recarga en <=60s)"
+
+def sync_zonas_frigate():
+    cfg = get_config()
+    frigate_url = (cfg.get("conexion") or {}).get("frigate_api") or "http://192.168.1.7:5000"
+    url = frigate_url.rstrip("/") + "/api/config"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as r:
+            f_cfg = json.loads(r.read().decode())
+        cameras = f_cfg.get("cameras") or {}
+        found_zones = set()
+        for cam_name, cam_cfg in cameras.items():
+            zones = cam_cfg.get("zones") or {}
+            for z_name in zones.keys():
+                found_zones.add(z_name)
+        
+        vis = cfg.setdefault("vision", {})
+        zs = vis.setdefault("zonas", {})
+        nuevas = 0
+        for z in found_zones:
+            if z not in zs:
+                zs[z] = {"habilitado": True, "labels": ["person"], "reescalar": False, "perfil_id": ""}
+                nuevas += 1
+        guardar_config(cfg)
+        return True, f"Sincronizadas {len(found_zones)} zonas desde Frigate ({nuevas} nuevas agregadas)", list(found_zones)
+    except Exception as e:
+        return False, f"Error al conectar con Frigate API ({url}): {e}", []
 
 def vision_zonas_list():
     cfg = get_config()
@@ -793,7 +881,7 @@ def vision_zona_add(zona, habilitado=True):
     guardar_config(cfg)
     return True, "zona agregada a visión (recarga ≤60s)"
 
-def vision_zona_update(zona, proveedor=None, modelo=None, habilitado=None, reescalar=None):
+def vision_zona_update(zona, proveedor=None, modelo=None, habilitado=None, reescalar=None, perfil_id=None):
     cfg = get_config()
     zs = (cfg.get("vision") or {}).get("zonas") or {}
     if zona not in zs:
@@ -810,6 +898,8 @@ def vision_zona_update(zona, proveedor=None, modelo=None, habilitado=None, reesc
         zs[zona]["habilitado"] = bool(habilitado)
     if reescalar is not None:
         zs[zona]["reescalar"] = bool(reescalar)
+    if perfil_id is not None:
+        zs[zona]["perfil_id"] = str(perfil_id).strip()
     guardar_config(cfg)
     return True, "zona actualizada (recarga ≤60s)"
 
@@ -922,16 +1012,37 @@ class Handler(BaseHTTPRequestHandler):
             filas = persona_update(int(m.group(1)), d.get("nombre"), d.get("tipo"), d.get("notas"))
             self._json({"ok": filas > 0, "persona_id": int(m.group(1))}, 404 if not filas else 200)
             return
+        m = re.match(r"^/api/avistamientos/(\d+)/revision$", u.path)
+        if m:
+            # Laboratorio: marca el avistamiento como correcto/falso_positivo/falso_negativo
+            rev = (d.get("revision") or "").strip()
+            if rev not in ("correcto", "falso_positivo", "falso_negativo", ""):
+                self._json({"ok": False, "detalle": "revisión inválida (correcto/falso_positivo/falso_negativo)"}, 400)
+                return
+            import datetime as _dt
+            c = con()
+            c.execute("UPDATE avistamientos SET revision=?, revision_ts=? WHERE id=?",
+                      (rev or None, _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S") if rev else None, int(m.group(1))))
+            c.commit()
+            c.close()
+            self._json({"ok": True, "detalle": "revisión guardada"})
+            return
         m = re.match(r"^/api/proveedores/([^/]+)$", u.path)
         if m:
             nombre = urllib.parse.unquote(m.group(1))
             ok, msg = guardar_proveedor(nombre, d.get("tipo"), d.get("base_url"), d.get("api_key"))
             self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
             return
+        m = re.match(r"^/api/vision/perfiles/([^/]+)$", u.path)
+        if m:
+            pid = urllib.parse.unquote(m.group(1))
+            ok, msg = perfil_zona_update(pid, d.get("nombre"), d.get("prompt"), d.get("modelo"))
+            self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
+            return
         m = re.match(r"^/api/vision/zonas/([^/]+)$", u.path)
         if m:
             zona = urllib.parse.unquote(m.group(1))
-            ok, msg = vision_zona_update(zona, d.get("proveedor"), d.get("modelo"), d.get("habilitado"), d.get("reescalar"))
+            ok, msg = vision_zona_update(zona, d.get("proveedor"), d.get("modelo"), d.get("habilitado"), d.get("reescalar"), d.get("perfil_id"))
             self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
             return
         m = re.match(r"^/api/vision/modelos/(\d+)$", u.path)
@@ -993,6 +1104,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             add_persona(nombre, (d or {}).get("tipo", "familia"), (d or {}).get("notas", ""))
             self._json({"ok": True, "nombre": nombre.strip()})
+            return
+        if u.path == "/api/vision/perfiles":
+            try:
+                d = self._read_body()
+            except Exception:
+                self._json({"error": "JSON inv?lido"}, 400)
+                return
+            ok, msg = perfil_zona_add((d or {}).get("id"), (d or {}).get("nombre"), (d or {}).get("prompt"), (d or {}).get("modelo"))
+            self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
+            return
+        if u.path == "/api/zonas/sync":
+            ok, msg, zonas = sync_zonas_frigate()
+            self._json({"ok": ok, "detalle": msg, "zonas": zonas}, 200 if ok else 500)
             return
         if u.path == "/api/proveedores":
             try:
@@ -1103,6 +1227,12 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = proveedor_delete(nombre)
             self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
             return
+        m = re.match(r"^/api/vision/perfiles/([^/]+)$", u.path)
+        if m:
+            pid = urllib.parse.unquote(m.group(1))
+            ok, msg = perfil_zona_delete(pid)
+            self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
+            return
         m = re.match(r"^/api/vision/zonas/([^/]+)$", u.path)
         if m:
             zona = urllib.parse.unquote(m.group(1))
@@ -1178,6 +1308,35 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": str(e)}, 500)
                     return
             self._json({"error": "estado no disponible aún"}, 404)
+            return
+
+        if path == "/api/laboratorio":
+            # Métricas de calibración: revisiones por zona + precisión global.
+            c = con()
+            total = c.execute("SELECT COUNT(*) FROM avistamientos").fetchone()[0]
+            revisados = c.execute("SELECT COUNT(*) FROM avistamientos WHERE revision IS NOT NULL").fetchone()[0]
+            filas = c.execute("SELECT zonas, revision, COUNT(*) FROM avistamientos WHERE revision IS NOT NULL GROUP BY zonas, revision").fetchall()
+            c.close()
+            zonas = {}
+            for zs, rev, n in filas:
+                try:
+                    lista = json.loads(zs) if zs else []
+                except Exception:
+                    lista = []
+                for z in (lista or ["sin_zona"]):
+                    d = zonas.setdefault(z, {"correcto": 0, "falso_positivo": 0, "falso_negativo": 0, "total": 0})
+                    if rev == "correcto":
+                        d["correcto"] += n
+                    elif rev == "falso_positivo":
+                        d["falso_positivo"] += n
+                    elif rev == "falso_negativo":
+                        d["falso_negativo"] += n
+                    d["total"] += n
+            corr = sum(v["correcto"] for v in zonas.values())
+            fp = sum(v["falso_positivo"] for v in zonas.values())
+            precision = round(corr / (corr + fp), 3) if (corr + fp) else None
+            self._json({"total": total, "revisados": revisados,
+                        "por_zona": zonas, "precision": precision})
             return
 
         if path == "/api/avistamientos":
@@ -1339,6 +1498,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"proveedores": proveedores_vision()})
             return
 
+        if path == "/api/vision/perfiles":
+            self._json(perfiles_zona_list())
+            return
         if path == "/api/vision/zonas":
             self._json(vision_zonas_list(), 200)
             return

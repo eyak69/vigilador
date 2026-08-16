@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Vigilador — módulo de VISIÓN.
+Vigilador — módulo de VISIÍ“N.
 Analiza el snapshot con un modelo de visión configurable por PROVEEDOR:
 - "openai": cualquier API compatible OpenAI (OpenRouter, NVIDIA, OpenAI...) vía chat/completions.
 - "ollama": modelo local (llava, llama3.2-vision...) vía /api/chat de Ollama.
-Extrae MÁXIMO contexto: descripción física, OCR de texto/logos, objetos, vehículo,
+Extrae MÍXIMO contexto: descripción física, OCR de texto/logos, objetos, vehículo,
 y veredicto estructurado. Ante fallo del proveedor configurado, usa la cadena de
 respaldo gratuita de OpenRouter (MODELS).
 """
@@ -28,7 +28,7 @@ Extrae el MAXIMO contexto posible de la persona visible:
 5. tipo: clasifica la visita en uno de: 'sodero/repartidor' (uniforme o carga de delivery), 'visita' (alguien que llama a la puerta), 'vecino', 'desconocido', 'otro'.
 6. confianza: 0.0 a 1.0 sobre tu clasificación.
 7. sospechoso: true si algo te parece fuera de lugar (merodeo, cara cubierta, actitud rara).
-8. peligro: PUNTO CRITICO. ¿La persona lleva un ARMA u objeto peligroso visible (cuchillo, machete, espada, pistola, palo, bate, objeto largo o metálico con filo o punta en la mano)? Si SÍ: {"arma": true, "tipo": "cuchillo"/"pistola"/"otro", "descripcion": "cómo y dónde lo lleva"}. Si NO: {"arma": false, "tipo": null, "descripcion": ""}. Rigor: un objeto largo en la mano NO es un paquete si tiene filo o punta.
+8. peligro: PUNTO CRITICO. ¿La persona lleva un ARMA u objeto peligroso visible (cuchillo, machete, espada, pistola, palo, bate, objeto largo o metálico con filo o punta en la mano)? Si SÍ: {"arma": true, "tipo": "cuchillo"/"pistola"/"otro", "descripcion": "cómo y dónde lo lleva"}. Si NO: {"arma": false, "tipo": null, "descripcion": ""}. Rigor: un objeto largo en la mano NO es un paquete si tiene filo o punta.
 
 Responde SOLO con JSON válido, sin texto extra, con esta estructura exacta:
 {"tipo": "...", "descripcion": "...", "ocr": ["..."], "objetos": ["..."], "vehiculo": "...", "confianza": 0.0, "sospechoso": false, "peligro": {"arma": false, "tipo": null, "descripcion": ""}}"""
@@ -92,7 +92,7 @@ def _llamar_openai(base_url, modelo, key, prompt, img_b64):
     return resp["choices"][0]["message"]["content"]
 
 def _llamar_ollama(base_url, modelo, prompt, img_b64):
-    """Ollama (sin key). Formato CLÁSICO universal: content como string +
+    """Ollama (sin key). Formato CLÍSICO universal: content como string +
     images aparte (compatible con Ollama viejas y nuevas). Reintenta sin
     keep_alive si la versión no lo soporta; fallback a /api/generate
     (moondream y similares)."""
@@ -152,10 +152,11 @@ def _procesar(modelo, content, err_contexto=""):
             "vehiculo": "no visible", "confianza": 0.0, "sospechoso": False,
             "_modelo": modelo, "_sin_json": True, "_error": err_contexto}
 
-def get_verdict(image_path, contexto="", proveedor=None, modelo=None):
+def get_verdict(image_path, contexto="", proveedor=None, modelo=None, perfil_prompt=""):
     """Devuelve dict con el veredicto. Nunca lanza: ante fallo total, 'desconocido'.
     proveedor: dict {tipo: openai|ollama, base_url, api_key_env, modelo} de la config.
-    modelo: override del nombre de modelo (asociación zona → modelo)."""
+    modelo: override del nombre de modelo.
+    perfil_prompt: contexto semántico del perfil de la zona."""
     try:
         with open(image_path, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode()
@@ -163,7 +164,11 @@ def get_verdict(image_path, contexto="", proveedor=None, modelo=None):
         return {"tipo": "desconocido", "descripcion": f"no pude leer la foto: {e}", "ocr": [],
                 "objetos": [], "vehiculo": "no visible", "confianza": 0.0, "sospechoso": False, "_error": str(e)}
 
-    prompt = PROMPT + (f"\nContexto adicional: {contexto}" if contexto else "")
+    prompt = PROMPT
+    if perfil_prompt:
+        prompt += f"\nContexto especifico de esta zona: {perfil_prompt}"
+    if contexto:
+        prompt += f"\nContexto adicional: {contexto}"
 
     # --- proveedor configurado (asociación zona → visión) ---
     if proveedor:
@@ -213,3 +218,4 @@ if __name__ == "__main__":
     path = sys.argv[1] if len(sys.argv) > 1 else "/home/hermes/workspace/frigate_095107_calle_person.jpg"
     ctx = sys.argv[2] if len(sys.argv) > 2 else ""
     print(json.dumps(get_verdict(path, ctx), ensure_ascii=False, indent=2))
+

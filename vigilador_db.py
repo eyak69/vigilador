@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Vigilador — capa SQL de avistamientos (SQLite).
 Complementa Qdrant (semántica) con búsquedas exactas/agregadas:
@@ -167,6 +167,20 @@ def placa_add(pat, nombre, tipo="desconocido", notas=""):
 
 # ---------- registro de PERSONAS (identidad por nombre) ----------
 
+def _normalizar_nombre(nombre):
+    """Frigate a veces emite el rostro como \"['Cristian', 0.86]\" (string serializado).
+    Extrae SOLO el nombre; si no es ese formato, devuelve el texto limpio."""
+    n = (nombre or "").strip()
+    if n.startswith("[") and n.endswith("]"):
+        try:
+            import ast
+            parsed = ast.literal_eval(n)
+            if isinstance(parsed, list) and parsed:
+                return str(parsed[0]).strip()
+        except Exception:
+            pass
+    return n
+
 def personas():
     c = con()
     rows = c.execute("""SELECT p.id, p.nombre, p.tipo, p.notas,
@@ -178,7 +192,7 @@ def personas():
 def add_persona(nombre, tipo="familia", notas=""):
     c = con()
     c.execute("INSERT OR IGNORE INTO personas (nombre, tipo, notas) VALUES (?,?,?)",
-              (nombre.strip(), tipo, notas))
+              (_normalizar_nombre(nombre), tipo, notas))
     c.commit()
     c.close()
 
@@ -187,7 +201,7 @@ def set_persona_avistamiento(av_id, nombre):
     c = con()
     if nombre:
         add_persona(nombre, "familia")
-        c.execute("UPDATE avistamientos SET persona = ? WHERE id = ?", (nombre.strip(), int(av_id)))
+        c.execute("UPDATE avistamientos SET persona = ? WHERE id = ?", (_normalizar_nombre(nombre).strip(), int(av_id)))
     else:
         c.execute("UPDATE avistamientos SET persona = NULL WHERE id = ?", (int(av_id),))
     c.commit()
@@ -284,3 +298,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

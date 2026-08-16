@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vigilador · App</title>
-<link rel="stylesheet" href="/app/style.css?v=39">
+<link rel="stylesheet" href="/app/style.css?v=47">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👁️</text></svg>">
 </head>
 <body>
@@ -24,6 +24,7 @@
     <button class="tab" data-tab="personas" title="Registro de identidades (familia, visitas, servicios).">Personas</button>
     <button class="tab" data-tab="config" title="Configuración del sistema: momentos, visión, Telegram, memoria y solapado.">Configuración</button>
     <button class="tab" data-tab="logs" title="Logs en vivo y bundle de diagnóstico.">Logs</button>
+    <button class="tab" data-tab="laboratorio" title="Revisión de avistamientos y métricas de calibración: el barrio aprendiendo.">🧪 Laboratorio</button>
     <a class="swagger" href="/openapi.json" target="_blank" title="Especificación OpenAPI">OpenAPI ↗</a>
   </nav>
 </header>
@@ -161,7 +162,30 @@
           </form>
         </div>
         <div class="grupo-ia">
-          <h3>Visión por zona</h3>
+          <div class="grupo-ia">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>📋 Perfiles de zona (Contexto semántico)</h3>
+          </div>
+          <p class="sub">Cada perfil define un contexto semántico ("Por el muro se sube un ladrón, no entra el sodero") y un modelo opcional. Un perfil se asigna a N zonas.</p>
+          <div id="perfiles-list" class="tablewrap"></div>
+          <form id="form-perfil" class="filters col" style="margin-top:10px;">
+            <div class="row2">
+              <input id="pf-id" placeholder="id corto (ej. muro)" required autocomplete="off" title="ID único del perfil (ej. muro).">
+              <input id="pf-nombre" placeholder="Nombre (ej. Muro Perimetral)" required autocomplete="off" title="Nombre del perfil.">
+            </div>
+            <textarea id="pf-prompt" rows="2" placeholder="Prompt de contexto para la visión (ej: Por el muro se sube un ladrón, no entra el sodero)" title="Contexto semántico que se suma al Base Prompt."></textarea>
+            <div class="row2">
+              <input id="pf-modelo" placeholder="Modelo override opcional (ej: qwen2.5vl:3b)" autocomplete="off" title="Modelo de visión override opcional (vacío = hereda el activo global).">
+              <button type="submit" title="Guardar perfil de zona">Guardar perfil</button>
+              <button type="button" id="btn-perfil-cancel" class="hidden" title="Cancelar edición">Cancelar</button>
+            </div>
+          </form>
+        </div>
+        <div class="grupo-ia">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Visión por zona</h3>
+            <button type="button" onclick="syncZonasFrigate()" class="btn-sm" style="cursor:pointer;" title="Sincronizar zonas vivas desde Frigate API">🔄 Sync Zonas (Frigate)</button>
+          </div>
           <p class="sub">Qué sistema de visión usa cada zona (habilitado + reescalar). Se aplica con recarga en caliente; el modelo lo define el ⭐ activo.</p>
           <div id="vision-zonas" class="tablewrap"></div>
           <form id="form-vision-zona" class="filters">
@@ -199,6 +223,7 @@
           <p class="sub">El stack de memoria — editable por componente con 💾, sin borrado: es infraestructura.</p>
           <div id="memoria-conf" class="tablewrap"></div>
         </div>
+      </div>
       </div>
 
       <div class="subpage hidden" id="st-telegram">
@@ -307,6 +332,15 @@
     </div>
   </section>
 
+  <section id="tab-laboratorio" class="tabpage">
+    <div class="panel">
+      <h2>🧪 Laboratorio <span class="badge">el barrio aprendiendo</span></h2>
+      <p class="sub">Revise los avistamientos y márquelos — ✅ correcto · ❌ falso positivo (alertó de más) · ➖ falso negativo (debió alertar). Eso crea el dataset de verdad para calibrar umbrales, prioridades y prompts con datos, no intuición.</p>
+      <div id="lab-metricas" class="filters"></div>
+      <div id="lab-lista" class="tablewrap"></div>
+    </div>
+  </section>
+
 <!-- modal de foto -->
 <div id="modal" class="modal hidden">
   <div class="modal-box">
@@ -327,6 +361,18 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/app/app.js?v=45"></script>
+<script src="/app/core.js?v=49"></script>
+<script src="/app/dashboard.js?v=49"></script>
+<script src="/app/avistamientos.js?v=49"></script>
+<script src="/app/placas.js?v=49"></script>
+<script src="/app/personas.js?v=49"></script>
+<script src="/app/config-vision.js?v=49"></script>
+<script src="/app/config-telegram.js?v=49"></script>
+<script src="/app/config-memoria.js?v=49"></script>
+<script src="/app/config-politica.js?v=49"></script>
+<script src="/app/memoria.js?v=49"></script>
+<script src="/app/logs.js?v=49"></script>
+<script src="/app/laboratorio.js?v=49"></script>
+<script src="/app/perfiles.js?v=49"></script>
 </body>
 </html>

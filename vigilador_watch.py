@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-Vigilador — FASE 5: NÚCLEO POTENTE.
+Vigilador — FASE 5: NÍšCLEO POTENTE.
 - Foco diurno: SOLO personas en puertacalle (cochera reservada para la fase nocturna).
 - TRACKER de ciclo de vida: cada objeto se sigue de aparición a desaparición
   (duración, zonas recorridas en orden, score máximo, merodeo, veredicto) y se
   cierra con registro estructurado en log + memoria.
-- OCUPACIÓN de zonas (topics frigate/<zona>/<label>): el daemon sabe si una zona está activa.
-- MOTOR DE POLÍTICA (evaluar_evento): fase × zona × objeto × severidad × merodeo ×
+- OCUPACIÍ“N de zonas (topics frigate/<zona>/<label>): el daemon sabe si una zona está activa.
+- MOTOR DE POLÍTICA (evaluar_evento): fase × zona × objeto × severidad × merodeo ×
   nocturno × recurrencia × rostro → decisión {ignorar|registrar|alertar} + prioridad.
 - RECURRENCIA: la memoria (Qdrant) es insumo de decisión — "el sodero pasó N veces".
 - SYNC de configuración de Frigate: /api/config con diff y aviso de drift.
@@ -261,7 +261,7 @@ def load_env():
 def write_log(entry):
     entry["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        # rotación manual: events.log máx 5MB, 6 backups (≈35MB)
+        # rotación manual: events.log máx 5MB, 6 backups (≥ˆ35MB)
         try:
             if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 5_000_000:
                 for i in range(6, 0, -1):
@@ -596,7 +596,7 @@ def diff_config(old, new):
     return cambios
 
 def actualizar_reglas_zonas():
-    """Reglas de objetos por zona DINÁMICAS (leídas de Frigate, no hardcodeadas)."""
+    """Reglas de objetos por zona DINÍMICAS (leídas de Frigate, no hardcodeadas)."""
     global ZONE_LABEL_RULES
     reglas = {}
     if synced_config:
@@ -623,7 +623,7 @@ def sync_frigate_config(reason="arranque", log_unchanged=False):
                  if "ELIMINADA" in c or "NUEVA" in c or any(z in c for z in INTEREST_ZONES)]
         if drift:
             try:
-                tg_enviar("drift", f"⚠️ <b>Vigilador</b> · cambios en Frigate ({reason}):\n"
+                tg_enviar("drift", f"⚠ï¸ <b>Vigilador</b> · cambios en Frigate ({reason}):\n"
                           + "\n".join("• " + d for d in drift[:6]))
             except Exception as e:
                 log.exception("alerta drift: %s", e)
@@ -774,7 +774,7 @@ def esc(s):
     """Escapa HTML para captions con parse_mode=HTML."""
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-# ================= NÚCLEO: tracker + política + ocupación =================
+# ================= NÍšCLEO: tracker + política + ocupación =================
 
 def nueva_actividad(eid, cam, label, start, zonas):
     actividades[eid] = {
@@ -970,14 +970,19 @@ def buscar_recurrencia(cam, label, tipo=None):
 
 def evaluar_evento(eid, cam, label, hit, score, severity, loitering, night,
                    verdict, face_name, recurrente):
-    """MOTOR DE POLÍTICA: decide acción y prioridad.
+    """MOTOR DE POLÍTICA: decide acción y prioridad.
     Devuelve {"accion": ignorar|registrar|ya_alerta|alertar, "prioridad", "razones"}."""
     if not hit:
         return {"accion": "registrar", "razon": "fuera de zonas de interés"}
-    for z in hit:
-        allowed = ZONE_LABEL_RULES.get(z)
-        if allowed is not None and label not in allowed:
-            return {"accion": "ignorar", "razon": f"zona {z} solo admite {sorted(allowed)}"}
+    # REGLAS DE ZONA (desde Frigate): cada zona admite ciertos labels.
+    # Una zona car-only (cochera) NO bloquea un evento de persona que también
+    # pase por una zona person (cocheranocturna): solo se ignora si NINGUNA
+    # zona del hit admite el label.
+    permitidas = [z for z in hit
+                  if ZONE_LABEL_RULES.get(z) is None or label in ZONE_LABEL_RULES[z]]
+    if not permitidas:
+        return {"accion": "ignorar", "razon": f"ninguna zona admite {label}",
+                "prioridad": None}
     if eid in seen:
         return {"accion": "ya_alerta", "razon": "ya alertado"}
     prioridad = "media"
@@ -1021,7 +1026,7 @@ def evaluar_evento(eid, cam, label, hit, score, severity, loitering, night,
 
 def _es_patente_valida(s):
     """Patente argentina: ABC123 (vieja) o AB123CD (Mercosur). Frigate a veces
-    emite el NOMBRE DE LA CÁMARA en el campo plate cuando no leyó nada."""
+    emite el NOMBRE DE LA CÍMARA en el campo plate cuando no leyó nada."""
     import re
     return bool(re.match(r"^[A-Z]{2,3}\d{3}[A-Z]{0,2}$", (s or "").upper()))
 
@@ -1103,7 +1108,7 @@ def process_event(ev, etype="update"):
         finalizar_actividad(eid, "end")
         return  # la alerta ya se emitió en su momento
 
-    # snapshot por API (solo la primera vez por evento; SÍ busca aunque ya se haya
+    # snapshot por API (solo la primera vez por evento; SÍ busca aunque ya se haya
     # alertado — Frigate puede publicar has_snapshot=true después de la alerta)
     path = None
     if (ev.get("has_snapshot") and eid not in vision_seen
@@ -1115,7 +1120,7 @@ def process_event(ev, etype="update"):
         if path and eid in actividades:
             actividades[eid]["foto"] = path
 
-    # --- VISIÓN: asociada a ZONA (config vision.zonas.<zona>.habilitado) ---
+    # --- VISIÍ“N: asociada a ZONA (config vision.zonas.<zona>.habilitado) ---
     # Cada zona puede usar un proveedor/modelo distinto (o estar deshabilitada),
     # y un filtro de labels (vision.zonas.<zona>.labels, default ["person"]).
     verdict = None
@@ -1209,8 +1214,21 @@ def process_event(ev, etype="update"):
         contadores["vision"] += 1
         # proveedor/modelo de la zona (o default) según config
         zc = (VISION_CFG.get("zonas") or {}).get(zonas_vision[0], {}) if zonas_vision else {}
-        prov = zc.get("proveedor") or (modelo_activo() or {}).get("proveedor")
-        modelo = zc.get("modelo") or (modelo_activo() or {}).get("modelo")
+        # PERFIL de la zona: prompt (contexto) + modelo override (si el perfil lo define)
+        perfil = None
+        pid = zc.get("perfil_id")
+        if pid:
+            perfil = (VISION_CFG.get("perfiles") or {}).get(pid)
+        perfil_prompt = (perfil or {}).get("prompt") or ""
+        perfil_modelo = ((perfil or {}).get("modelo") or "").strip()
+        act = modelo_activo() or {}
+        prov = zc.get("proveedor") or act.get("proveedor")
+        modelo = zc.get("modelo") or act.get("modelo")
+        if perfil_modelo:
+            if "/" in perfil_modelo:          # formato "proveedor/modelo" → ambos
+                prov, modelo = perfil_modelo.split("/", 1)
+            else:                              # nombre pelado → proveedor del activo
+                modelo = perfil_modelo
         pc = (VISION_CFG.get("proveedores") or {}).get(prov) or None
         contexto = f"cámara {cam}, zona {sorted(hit) if hit else 'sin zona'}, {time.strftime('%d/%m %H:%M')}"
         # REESCALAR la imagen antes de mandarla (config vision.zonas.<zona>.reescalar):
@@ -1227,7 +1245,7 @@ def process_event(ev, etype="update"):
                     path = tmp
             except Exception:
                 pass
-        # --- VISIÓN con TOPE de 40 s en hilo: la alerta espera al veredicto para
+        # --- VISIÍ“N con TOPE de 40 s en hilo: la alerta espera al veredicto para
         #     salir COMPLETA en un solo mensaje (decisión del dueño, 13/08).
         #     Cobertura: modelo caliente ~11 s; recarga del modelo ~38 s.
         #     Si el proveedor tarda/falla, la alerta sale igual y el veredicto
@@ -1236,7 +1254,7 @@ def process_event(ev, etype="update"):
 
         def _analizar():
             try:
-                _vr["v"] = get_verdict(path, contexto, proveedor=pc, modelo=modelo)
+                _vr["v"] = get_verdict(path, contexto, proveedor=pc, modelo=modelo, perfil_prompt=perfil_prompt)
             except Exception as e:
                 _vr["err"] = str(e)
             _vr["done"] = True
@@ -1264,7 +1282,7 @@ def process_event(ev, etype="update"):
                         vision_seen_retry[eid] = time.time()
                         time.sleep(5)
                         try:
-                            v2 = get_verdict(path, contexto, proveedor=pc, modelo=modelo)
+                            v2 = get_verdict(path, contexto, proveedor=pc, modelo=modelo, perfil_prompt=perfil_prompt)
                             if v2 and isinstance(v2, dict) and not v2.get("_error"):
                                 v = v2
                         except Exception:
@@ -1294,7 +1312,7 @@ def process_event(ev, etype="update"):
                         mid, tipo_regla = par
                         txt = f"🧠 <b>{esc(v.get('tipo') or 'desconocido')}</b> ({v.get('confianza', 0):.2f})"
                         if v.get("sospechoso"):
-                            txt += "\n⚠️ <b>SOSPECHOSO</b>"
+                            txt += "\n⚠ï¸ <b>SOSPECHOSO</b>"
                         if v.get("descripcion"):
                             txt += f"\n📝 {esc(v['descripcion'][:160])}"
                         tg_enviar(tipo_regla, txt, reply_to=mid)
@@ -1346,7 +1364,7 @@ def process_event(ev, etype="update"):
         # memoria FIRE-AND-FORGET: nunca bloquea el flujo del evento
         threading.Thread(target=remember, args=(fact,), daemon=True).start()
 
-    # --- CORRECCIÓN por visión: si el veredicto describe un ANIMAL (el perro del
+    # --- CORRECCIÍ“N por visión: si el veredicto describe un ANIMAL (el perro del
     #     dueño suele aparecer como 'person' en el detector SSD genérico), NO se
     #     alerta como persona — se anota la corrección y se registra con foto. ---
     es_animal = False
@@ -1359,7 +1377,7 @@ def process_event(ev, etype="update"):
                    "label": label,
                    "detalle": ((verdict or {}).get("descripcion") or "")[:120]})
 
-    # --- MOTOR DE POLÍTICA ---
+    # --- MOTOR DE POLÍTICA ---
     decision = evaluar_evento(eid, cam, label, hit, score, severity, loitering, night,
                               verdict, face_name, recurrente)
     if es_animal:
@@ -1374,7 +1392,7 @@ def process_event(ev, etype="update"):
     # MOVIMIENTO FALSO por REFLEJOS/FANTASMAS: Frigate dice 'en_movimiento' pero
     # el centroide del box no se desplazó (el auto parado cuyo reflejo baila, o
     # un track fantasma). Umbral POR ETIQUETA (config movimiento_min_px):
-    # 0 = apagado (personas paradas en la puerta SÍ son eventos reales).
+    # 0 = apagado (personas paradas en la puerta SÍ son eventos reales).
     umbral_px = MOVIMIENTO_MIN_PX_POR_LABEL.get(label, 0)
     if decision.get("accion") == "alertar" and umbral_px > 0:
         disp = actividades.get(eid, {}).get("_disp") or 0
@@ -1407,8 +1425,8 @@ def process_event(ev, etype="update"):
                      "veredicto": (verdict or {}).get("tipo") if verdict else None,
                      "patente": patente if patente else None}
     prioridad = decision["prioridad"]
-    emoji = {"critica": "🚨🚨 CRÍTICA", "alta": "🚨 ALTA",
-             "media": "⚡ MEDIA", "baja": "ℹ️ INFO"}.get(prioridad, prioridad)
+    emoji = {"critica": "🚨🚨 CRÍTICA", "alta": "🚨 ALTA",
+             "media": "⚡ MEDIA", "baja": "ℹ️ INFO"}.get(prioridad, prioridad)
     tags = [emoji]
     if loitering:
         tags.append("merodeo")
@@ -1422,7 +1440,7 @@ def process_event(ev, etype="update"):
 
     cap = f"🔎 <b>{esc(cam)}</b> · {esc(label)} · {fmt_ts(start)}"
     if verdict and verdict.get("_arma"):
-        cap = f"⚠️ <b>POSIBLE ARMA</b> ({esc(verdict['_arma'])})\n" + cap
+        cap = f"⚠ï¸ <b>POSIBLE ARMA</b> ({esc(verdict['_arma'])})\n" + cap
     if hit:
         cap += f" · <i>{esc(','.join(sorted(hit)))}</i>"
     if tags:
@@ -1444,7 +1462,7 @@ def process_event(ev, etype="update"):
         if line:
             cap += "\n🧠 " + " · ".join(line)
         if verdict.get("sospechoso"):
-            cap += "\n⚠️ <b>SOSPECHOSO</b>"
+            cap += "\n⚠ï¸ <b>SOSPECHOSO</b>"
         if verdict.get("descripcion"):
             cap += "\n📝 " + esc(verdict["descripcion"][:160])
     if face_name:
@@ -1564,7 +1582,7 @@ def handle_publish(hdr, topic, payload):
             detectores.clear()
             for k, v in (st.get("detectors") or {}).items():
                 detectores[k] = {"inference_speed": v.get("inference_speed")}
-            revisar_recarga_config()  # recarga en caliente si cambió la config (≈60s)
+            revisar_recarga_config()  # recarga en caliente si cambió la config (≥ˆ60s)
             escribir_estado()  # estado vivo para la API/UI
             if time.time() - last_heartbeat > HEARTBEAT_LOG:
                 c = contadores
@@ -1673,7 +1691,7 @@ def handle_publish(hdr, topic, payload):
         now = time.time()
         if status == "offline" and now - last_offline.get(cam, 0) > OFFLINE_COOLDOWN:
             last_offline[cam] = now
-            tg_enviar("offline", f"⚠️ <b>{cam}</b>: detector OFFLINE ({time.strftime('%H:%M:%S')})")
+            tg_enviar("offline", f"⚠ï¸ <b>{cam}</b>: detector OFFLINE ({time.strftime('%H:%M:%S')})")
             threading.Thread(target=remember, args=(f"{time.strftime('%Y-%m-%d %H:%M:%S')}: detector de {cam} quedó offline",), daemon=True).start()
         write_log({"type": "detect_status", "camera": cam, "status": status})
         return
@@ -1753,3 +1771,4 @@ if __name__ == "__main__":
     log.info("Vigilador FASE 5 iniciado · eventos=%s · log=%s", LOG_FILE,
              os.path.join(VIGILADOR_HOME, "logs", "vigilador.log"))
     run()
+

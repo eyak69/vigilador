@@ -18,7 +18,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from vision_verdict import get_verdict
-from vigilador_db import insertar_avistamiento, add_persona, placa_add, placa_existe
+from vigilador_db import (insertar_avistamiento, actualizar_veredicto_avistamiento,
+                          label_corregido_por_vision, add_persona, placa_add, placa_existe)
+from vision_policy import zona_vision_activa
 
 # ---------- base del Vigilador (DESACOPLADO de Hermes) ----------
 # VIGILADOR_HOME: raíz del box. Si no se define, se deduce del propio directorio:
@@ -1125,9 +1127,9 @@ def process_event(ev, etype="update"):
     # y un filtro de labels (vision.zonas.<zona>.labels, default ["person"]).
     verdict = None
     zonas_cfg = VISION_CFG.get("zonas") or {}
+    perfiles_cfg = VISION_CFG.get("perfiles") or {}
     zonas_vision = [z for z in hit
-                    if zonas_cfg.get(z, {}).get("habilitado")
-                    and label in zonas_cfg.get(z, {}).get("labels", ["person"])]
+                    if zona_vision_activa(zonas_cfg.get(z, {}), perfiles_cfg, label)]
     do_vision = bool(zonas_vision)
 
     # --- RECONOCIMIENTO FACIAL (cuando Frigate lo emita) ---
@@ -1294,15 +1296,12 @@ def process_event(ev, etype="update"):
                         return
                     if eid in actividades:
                         actividades[eid]["veredicto"] = v
+                        actividades[eid]["label"] = label_corregido_por_vision(
+                            actividades[eid].get("label"), v)
                     else:
                         # actividad ya cerrada: el veredicto tardío se guarda en SQL
                         try:
-                            from vigilador_db import con as dbcon
-                            db = dbcon()
-                            db.execute("UPDATE avistamientos SET veredicto=? WHERE evento_id=?",
-                                       (json.dumps(v, ensure_ascii=False), str(eid)))
-                            db.commit()
-                            db.close()
+                            actualizar_veredicto_avistamiento(eid, v)
                         except Exception:
                             pass
                     write_log({"type": "vision_tardia", "id": str(eid)[:12], "camera": cam,
@@ -1364,17 +1363,15 @@ def process_event(ev, etype="update"):
         # memoria FIRE-AND-FORGET: nunca bloquea el flujo del evento
         threading.Thread(target=remember, args=(fact,), daemon=True).start()
 
-    # --- CORRECCIÍ“N por visión: si el veredicto describe un ANIMAL (el perro del
-    #     dueño suele aparecer como 'person' en el detector SSD genérico), NO se
-    #     alerta como persona — se anota la corrección y se registra con foto. ---
-    es_animal = False
-    if verdict and isinstance(verdict, dict):
-        texto = ((verdict.get("descripcion") or "") + " " + " ".join(verdict.get("objetos") or [])).lower()
-        if any(p in texto for p in ("perro", "gato", "animal", "canino", "felino", "mascota", "ave", "pájaro")):
-            es_animal = True
+    # --- CORRECCIÍ“N por visión: si el veredicto descarta una persona y reconoce
+    #     un animal, corrige también el label estructural del avistamiento. ---
+    label_vision = label_corregido_por_vision(label, verdict)
+    es_animal = label_vision != str(label or "").lower()
     if es_animal:
+        if eid in actividades:
+            actividades[eid]["label"] = label_vision
         write_log({"type": "vision_correccion", "id": str(eid)[:12], "camera": cam,
-                   "label": label,
+                   "label": label, "label_corregido": label_vision,
                    "detalle": ((verdict or {}).get("descripcion") or "")[:120]})
 
     # --- MOTOR DE POLÍTICA ---

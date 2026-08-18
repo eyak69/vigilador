@@ -81,6 +81,14 @@ def validar_config(cfg):
         for k in ("proveedores", "zonas", "default"):
             if vis.get(k) is not None and not isinstance(vis[k], dict):
                 return False, f"vision.{k} debe ser un objeto"
+        perfiles = vis.get("perfiles") or {}
+        for zona, zcfg in (vis.get("zonas") or {}).items():
+            if not isinstance(zcfg, dict):
+                return False, f"vision.zonas.{zona} debe ser un objeto"
+            if zcfg.get("habilitado"):
+                pid = str(zcfg.get("perfil_id") or "").strip()
+                if not pid or pid not in perfiles:
+                    return False, f"vision.zonas.{zona}: habilitada requiere un perfil válido"
     return True, ""
 
 def get_config():
@@ -172,7 +180,7 @@ def _build_openapi():
             "Placa": {"type": "object", "properties": {"patente": {"type": "string"}, "nombre": {"type": "string"}, "tipo": {"type": "string", "enum": ["vecino", "visita", "servicio", "desconocido"]}, "notas": {"type": "string"}}},
             "Persona": {"type": "object", "properties": {"nombre": {"type": "string"}, "tipo": {"type": "string"}, "notas": {"type": "string"}}},
             "Etiqueta": {"type": "object", "properties": {"persona": {"type": "string", "nullable": True, "description": "nombre o null para quitar"}}},
-            "VisionZona": {"type": "object", "properties": {"zona": {"type": "string"}, "proveedor": {"type": "string"}, "modelo": {"type": "string"}, "habilitado": {"type": "boolean"}}},
+            "VisionZona": {"type": "object", "properties": {"zona": {"type": "string"}, "perfil_id": {"type": "string", "description": "Obligatorio para habilitar visión"}, "habilitado": {"type": "boolean"}, "reescalar": {"type": "boolean"}}},
             "PrioridadTipo": {"type": "object", "properties": {"tipo": {"type": "string"}, "prioridad": {"type": "string", "enum": ["baja", "media", "alta", "critica"]}}},
             "Proveedor": {"type": "object", "properties": {"nombre": {"type": "string"}, "tipo": {"type": "string", "enum": ["openai", "ollama"]}, "base_url": {"type": "string"}, "modelo": {"type": "string"}, "api_key": {"type": "string", "description": "va al .env, nunca se devuelve"}}},
             "Bot": {"type": "object", "properties": {"nombre": {"type": "string"}, "chat_id": {"type": "string"}, "token": {"type": "string", "description": "va al .env como TELEGRAM_<NOMBRE>_BOT_TOKEN"}, "habilitado": {"type": "boolean"}}},
@@ -791,6 +799,7 @@ def perfil_zona_delete(pid):
     for z_name, z_cfg in zonas.items():
         if z_cfg.get("perfil_id") == pid:
             z_cfg["perfil_id"] = ""
+            z_cfg["habilitado"] = False
     guardar_config(cfg)
     return True, "Perfil eliminado (recarga en <=60s)"
 
@@ -814,7 +823,7 @@ def sync_zonas_frigate():
         nuevas = 0
         for z in found_zones:
             if z not in zs:
-                zs[z] = {"habilitado": True, "labels": ["person"], "reescalar": False, "perfil_id": ""}
+                zs[z] = {"habilitado": False, "labels": ["person"], "reescalar": False, "perfil_id": ""}
                 nuevas += 1
         guardar_config(cfg)
         return True, f"Sincronizadas {len(found_zones)} zonas desde Frigate ({nuevas} nuevas agregadas)", list(found_zones)
@@ -870,20 +879,21 @@ def vision_modelo_delete(idx):
     guardar_config(cfg)
     return True, "modelo eliminado (≤60s)"
 
-def vision_zona_add(zona, habilitado=True):
+def vision_zona_add(zona, habilitado=False):
     cfg = get_config()
     vis = cfg.setdefault("vision", {})
     zs = vis.setdefault("zonas", {})
     if zona in zs:
         return False, "la zona ya existe (usá PUT)"
-    zs[zona] = {"habilitado": bool(habilitado), "labels": ["person"],
-                "reescalar": False}   # el modelo ÚNICO (vision.default) gobierna
+    zs[zona] = {"habilitado": False, "labels": ["person"],
+                "reescalar": False, "perfil_id": ""}
     guardar_config(cfg)
     return True, "zona agregada a visión (recarga ≤60s)"
 
 def vision_zona_update(zona, proveedor=None, modelo=None, habilitado=None, reescalar=None, perfil_id=None):
     cfg = get_config()
-    zs = (cfg.get("vision") or {}).get("zonas") or {}
+    vis = cfg.get("vision") or {}
+    zs = vis.get("zonas") or {}
     if zona not in zs:
         return False, "zona no existe"
     if proveedor is not None:
@@ -894,12 +904,17 @@ def vision_zona_update(zona, proveedor=None, modelo=None, habilitado=None, reesc
         zs[zona]["modelo"] = modelo
     else:
         zs[zona].pop("modelo", None)
+    perfil_final = str(perfil_id if perfil_id is not None else zs[zona].get("perfil_id") or "").strip()
+    habilitado_final = bool(habilitado if habilitado is not None else zs[zona].get("habilitado"))
+    perfiles = vis.get("perfiles") or {}
+    if habilitado_final and (not perfil_final or perfil_final not in perfiles):
+        return False, "para habilitar visión debe asignar un perfil de zona válido"
     if habilitado is not None:
-        zs[zona]["habilitado"] = bool(habilitado)
+        zs[zona]["habilitado"] = habilitado_final
     if reescalar is not None:
         zs[zona]["reescalar"] = bool(reescalar)
     if perfil_id is not None:
-        zs[zona]["perfil_id"] = str(perfil_id).strip()
+        zs[zona]["perfil_id"] = perfil_final
     guardar_config(cfg)
     return True, "zona actualizada (recarga ≤60s)"
 
@@ -1170,7 +1185,7 @@ class Handler(BaseHTTPRequestHandler):
             if not zona:
                 self._json({"error": "falta zona"}, 400)
                 return
-            ok, msg = vision_zona_add(zona, True)
+            ok, msg = vision_zona_add(zona, False)
             self._json({"ok": ok, "detalle": msg}, 200 if ok else 400)
             return
         if u.path == "/api/vision/modelos":

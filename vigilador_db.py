@@ -13,7 +13,7 @@ Uso CLI:
   vigilador_db.py placa list
   vigilador_db.py backfill <events.log>
 """
-import os, sys, json, sqlite3, argparse, time
+import os, sys, json, sqlite3, argparse, time, re
 from datetime import datetime
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vigilador.db")
@@ -79,20 +79,72 @@ def init():
     c.close()
     print(f"esquema listo en {DB}")
 
+def label_corregido_por_vision(label, veredicto):
+    """Corrige falsos ``person`` solo cuando visión descarta una persona.
+
+    El label original de Frigate se conserva salvo que el tipo sea explícitamente
+    animal o la descripción niegue una persona y, además, identifique un animal.
+    """
+    original = str(label or "").lower()
+    if original != "person" or not isinstance(veredicto, dict) or veredicto.get("_error"):
+        return original
+    tipo = str(veredicto.get("tipo") or "").lower().strip()
+    objetos = " ".join(str(x) for x in (veredicto.get("objetos") or []))
+    texto = f"{tipo} {veredicto.get('descripcion') or ''} {objetos}".lower()
+    contiene = lambda palabra: re.search(rf"(?<!\w){re.escape(palabra)}(?!\w)", texto) is not None
+    mapa = (
+        ("cat", ("gato", "gata", "felino", "cat")),
+        ("dog", ("perro", "perra", "canino", "dog")),
+        ("bird", ("pájaro", "pajaro", "ave", "bird")),
+    )
+    animal = next((destino for destino, palabras in mapa if any(contiene(p) for p in palabras)), None)
+    if not animal and any(contiene(p) for p in ("animal", "mascota")):
+        animal = "animal"
+    tipo_animal = any(tipo == p for _, palabras in mapa for p in palabras) or tipo in ("animal", "mascota")
+    niega_persona = any(p in texto for p in (
+        "no se observa ninguna persona", "no se observa una persona", "no se observa persona",
+        "no hay ninguna persona", "no hay persona", "ninguna persona", "sin persona",
+    ))
+    return animal if animal and (tipo_animal or niega_persona) else original
+
+def actualizar_veredicto_avistamiento(evento_id, veredicto):
+    """Guarda visión tardía y reclasifica el label estructural si corresponde."""
+    c = con()
+    try:
+        row = c.execute("SELECT label FROM avistamientos WHERE evento_id=?", (str(evento_id),)).fetchone()
+        if not row:
+            return 0
+        original = row["label"]
+        corregido = label_corregido_por_vision(original, veredicto)
+        guardado = dict(veredicto or {})
+        if corregido != original:
+            guardado.setdefault("label_original", original)
+        cur = c.execute("UPDATE avistamientos SET veredicto=?, label=? WHERE evento_id=?",
+                        (json.dumps(guardado, ensure_ascii=False), corregido, str(evento_id)))
+        c.commit()
+        return cur.rowcount
+    finally:
+        c.close()
+
 def insertar_avistamiento(a):
     """a: dict con evento_id, camara, label, inicio, fin, duracion, zonas(list),
     patente, patente_score, veredicto, prioridad, motivo_fin, foto, persona, estado."""
     c = con()
     try:
+        veredicto = dict(a.get("veredicto") or {})
+        label_original = a.get("label")
+        label = label_corregido_por_vision(label_original, veredicto)
+        if label != label_original:
+            veredicto.setdefault("label_original", label_original)
         c.execute("""INSERT OR IGNORE INTO avistamientos
             (evento_id, camara, label, patente, patente_score, inicio, fin, duracion,
              zonas, veredicto, prioridad, motivo_fin, foto, persona, estado)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (a.get("evento_id"), a.get("camara"), a.get("label"),
+            (a.get("evento_id"), a.get("camara"), label,
              a.get("patente"), a.get("patente_score"),
              a.get("inicio"), a.get("fin"), a.get("duracion"),
              json.dumps(a.get("zonas") or [], ensure_ascii=False),
-             json.dumps(a.get("veredicto") or {}, ensure_ascii=False) if a.get("veredicto") else None,
+             json.dumps(veredicto, ensure_ascii=False) if veredicto else None,
              a.get("prioridad"), a.get("motivo_fin"), a.get("foto"), a.get("persona"),
              a.get("estado")))
         c.commit()

@@ -38,32 +38,43 @@ async function cargarVision() {
             } catch (e) { toast(e.message, true); }
             }
 function renderVisionZonas(zonas) {
-  /* Tabla "Visión por zona": zona + perfil (select) + habilitado + reescalar. */
+  /* Sin perfil no hay visión: el perfil asigna explícitamente el ojo a la zona. */
   const el = $("#vision-zonas");
   if (!el) return;
   el.innerHTML = `<table><tr><th>Zona</th><th>Perfil de Zona</th><th>Habilitada</th><th>Reescalar</th><th></th></tr>` +
     Object.entries(zonas || {}).map(([z, v]) => `<tr>
       <td><b>${esc(z)}</b></td>
       <td>
-        <select class="vz-perfil" data-zona="${esc(z)}" style="max-width:140px;">
-          <option value="">(sin perfil)</option>
+        <select class="vz-perfil" data-zona="${esc(z)}" style="max-width:170px;" onchange="actualizarEstadoVisionFila(this)">
+          <option value="">(sin perfil = sin visión)</option>
           ${Object.entries(_PERFILES).map(([pid, p]) => `<option value="${esc(pid)}" ${v.perfil_id === pid ? "selected" : ""}>${esc(p.nombre || pid)}</option>`).join("")}
         </select>
       </td>
-      <td><input type="checkbox" class="vz-hab" data-zona="${esc(z)}" title="Habilita la visión en esta zona: cada evento de persona se analiza con el modelo único de la app." ${v.habilitado ? "checked" : ""}></td>
+      <td><input type="checkbox" class="vz-hab" data-zona="${esc(z)}" title="Habilita visión únicamente cuando esta zona tiene un perfil asignado." ${v.habilitado && v.perfil_id ? "checked" : ""} ${v.perfil_id ? "" : "disabled"}></td>
       <td><input type="checkbox" class="vz-res" data-zona="${esc(z)}" title="Reescala la imagen (máx 640px) antes de enviarla al modelo: ~2x más rápido en GPU chicas." ${v.reescalar ? "checked" : ""}></td>
       <td><button class="del" title="Guarda SOLO esta zona (checks)." onclick="guardarVisionZona('${esc(z)}')">💾</button>
           <button class="del" title="Quita la visión de esta zona (no elimina la zona de Frigate)." onclick="eliminarVisionZona('${esc(z)}')">✕</button></td>
     </tr>`).join("") + "</table>";
 }
+function actualizarEstadoVisionFila(sel) {
+  const hab = sel.closest("tr")?.querySelector(".vz-hab");
+  if (!hab) return;
+  hab.disabled = !sel.value;
+  if (!sel.value) hab.checked = false;
+}
 async function guardarVisionZona(z) {
   const fila = document.querySelector(`[data-zona="${CSS.escape(z)}"]`)?.closest("tr");
   if (!fila) return;
+  const perfilId = fila.querySelector(".vz-perfil")?.value || "";
+  if (fila.querySelector(".vz-hab").checked && !perfilId) {
+    toast("Para habilitar visión debe asignar un perfil", true);
+    return;
+  }
   try {
     await fetchJson(`/api/vision/zonas/${encodeURIComponent(z)}`, { method: "PUT", body: JSON.stringify({
       habilitado: fila.querySelector(".vz-hab").checked,
       reescalar: fila.querySelector(".vz-res").checked,
-      perfil_id: fila.querySelector(".vz-perfil")?.value || "" }) });
+      perfil_id: perfilId }) });
     toast(`zona ${z} guardada (≤60s)`);
   } catch (err) { toast(err.message, true); }
 }
@@ -113,8 +124,8 @@ bind("#form-vision-zona", "submit", async (e) => {
   if (!zona) return;
   try {
     await fetchJson("/api/vision/zonas", { method: "POST", body: JSON.stringify({
-      zona, habilitado: true }) });
-    toast(`zona ${zona} agregada a visión`);
+      zona, habilitado: false }) });
+    toast(`zona ${zona} agregada sin visión; asigne un perfil para habilitarla`);
     $("#vz-nombre").value = "";
     cargarVision();
   } catch (err) { toast(err.message, true); }

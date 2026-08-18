@@ -186,7 +186,7 @@
             <h3>Visión por zona</h3>
             <button type="button" onclick="syncZonasFrigate()" class="btn-sm" style="cursor:pointer;" title="Sincronizar zonas vivas desde Frigate API">🔄 Sync Zonas (Frigate)</button>
           </div>
-          <p class="sub">Qué sistema de visión usa cada zona (habilitado + reescalar). Se aplica con recarga en caliente; el modelo lo define el ⭐ activo.</p>
+          <p class="sub">La visión solo se ejecuta en zonas con un perfil asignado y habilitado. Sin perfil, no se envía ninguna imagen al modelo ni se gastan tokens.</p>
           <div id="vision-zonas" class="tablewrap"></div>
           <form id="form-vision-zona" class="filters">
             <select id="vz-nombre" title="Zona de Frigate a asociar (las ya configuradas se filtran)."><option value="">(cargando zonas de Frigate…)</option></select>
@@ -361,18 +361,18 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/app/core.js?v=49"></script>
-<script src="/app/dashboard.js?v=49"></script>
-<script src="/app/avistamientos.js?v=49"></script>
-<script src="/app/placas.js?v=49"></script>
-<script src="/app/personas.js?v=49"></script>
-<script src="/app/config-vision.js?v=49"></script>
-<script src="/app/config-telegram.js?v=49"></script>
-<script src="/app/config-memoria.js?v=49"></script>
-<script src="/app/config-politica.js?v=49"></script>
-<script src="/app/memoria.js?v=49"></script>
-<script src="/app/logs.js?v=49"></script>
-<script src="/app/laboratorio.js?v=49"></script>
-<script src="/app/perfiles.js?v=49"></script>
+<script src="/app/core.js?v=50"></script>
+<script src="/app/dashboard.js?v=50"></script>
+<script src="/app/avistamientos.js?v=50"></script>
+<script src="/app/placas.js?v=50"></script>
+<script src="/app/personas.js?v=50"></script>
+<script src="/app/config-vision.js?v=50"></script>
+<script src="/app/config-telegram.js?v=50"></script>
+<script src="/app/config-memoria.js?v=50"></script>
+<script src="/app/config-politica.js?v=50"></script>
+<script src="/app/memoria.js?v=50"></script>
+<script src="/app/logs.js?v=50"></script>
+<script src="/app/laboratorio.js?v=50"></script>
+<script src="/app/perfiles.js?v=50"></script>
 </body>
 </html>

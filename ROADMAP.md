@@ -36,11 +36,12 @@
 
 ## Pendiente / Próximos pasos
 
-1. **Perfiles de zona (diseño acordado 14/08, pendiente de implementar)**:
-   - **ZONA**: id = nombre en Frigate (único, no se puede duplicar) · camara · momentos · visión habilitado/reescalar · anti-fantasma · `perfil_id` (1 sola perfil por zona).
+1. **Perfiles de zona (implementado; regla cerrada 18/08)**:
+   - **ZONA**: id = nombre en Frigate (único, no se puede duplicar) · camara · momentos · visión habilitado/reescalar · anti-fantasma · `perfil_id` (1 solo perfil por zona).
    - **PERFIL ZONA** (CRUD en app): id · nombre · **prompt** (contexto de la zona) · **modelo** (del CRUD; vacío = hereda el ⭐ activo). Un perfil puede estar en VARIAS zonas (1:N).
-   - **BASE PROMPT fijo** (en código): el contrato de salida JSON (campos tipo/descripcion/ocr/objetos/vehiculo/confianza/sospechoso/peligro) — lo que la app entiende. El prompt del perfil se SUMA como contexto (p. ej. muro: "por aquí se sube un ladrón, no entra el sodero").
-   - **Zonas**: entran automáticas como ahora + botón "sync zonas" (manual, desde Frigate).
+   - **Cadena obligatoria**: zona con personas → perfil válido → prompt del perfil → visión. **Sin perfil no hay llamada al modelo ni consumo de tokens**, aunque un JSON viejo conserve `habilitado: true`; daemon lo bloquea, API lo rechaza y app deshabilita el check.
+   - **BASE PROMPT fijo** (en código): solo contrato de salida JSON; nunca habilita por sí mismo una zona. El prompt del perfil aporta qué buscar y el contexto semántico.
+   - **Zonas nuevas/sincronizadas**: nacen con visión deshabilitada hasta asignarles perfil y guardar explícitamente.
    - Regla del dueño: guardar antes de actuar; pensamos juntos; NO tocar código sin confirmación.
 2. **Probar alerta en vivo con gemini-flash-lite activo**: tiempos reales del circuito MQTT → visión → Telegram (un solo mensaje, tope 40 s).
 3. **Verificación de armas**: decidir si se agrega un segundo ojo (11b de NVIDIA) como verificador por zona con `peligro` — el dueño tenía pendiente "modelo grande" para armas.
